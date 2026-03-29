@@ -75,6 +75,14 @@ struct ContentView: View {
                     Text(formatTime(manager.elapsedSeconds))
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
+
+                    if manager.currentChunkIndex > 0 {
+                        Text("Chunk \(manager.currentChunkIndex)")
+                            .font(.caption)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.quaternary, in: .capsule)
+                    }
                 }
 
                 Text(manager.statusMessage)
@@ -96,9 +104,12 @@ struct ContentView: View {
                     .font(.headline)
 
                 List(manager.recordedFiles) { file in
+                    let isTxt = file.name.hasSuffix(".txt")
                     HStack {
-                        Image(systemName: "waveform")
-                            .foregroundStyle(file.name.hasSuffix(".m4a") ? .purple : .blue)
+                        Image(systemName: isTxt ? "doc.text" : "waveform")
+                            .foregroundStyle(
+                                isTxt ? .green : file.name.hasSuffix(".m4a") ? .purple : .blue
+                            )
                             .frame(width: 16)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(file.name)
@@ -109,17 +120,34 @@ struct ContentView: View {
                                 .foregroundStyle(.tertiary)
                         }
                         Spacer()
+                        if !isTxt {
+                            transcriptionBadge(for: file.url)
+                        }
                     }
                     .contentShape(Rectangle())
                     .onTapGesture(count: 2) {
-                        NSWorkspace.shared.open(file.url)
+                        if isTxt {
+                            openInZed(file.url)
+                        } else {
+                            NSWorkspace.shared.open(file.url)
+                        }
                     }
                     .contextMenu {
                         Button("Open") {
                             NSWorkspace.shared.open(file.url)
                         }
+                        if let txtURL = transcriptURL(for: file.url),
+                           FileManager.default.fileExists(atPath: txtURL.path) {
+                            Button("Show Transcript") {
+                                let process = Process()
+                                process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+                                process.arguments = ["zed-preview", txtURL.path]
+                                try? process.run()
+                            }
+                        }
                         Button("Reveal in Finder") {
-                            NSWorkspace.shared.selectFile(file.url.path, inFileViewerRootedAtPath: "")
+                            NSWorkspace.shared.selectFile(
+                                file.url.path, inFileViewerRootedAtPath: "")
                         }
                         Divider()
                         Button("Delete", role: .destructive) {
@@ -133,17 +161,64 @@ struct ContentView: View {
             }
         }
         .padding(24)
-        .frame(width: 380)
+        .frame(width: 400)
         .fixedSize(horizontal: true, vertical: false)
         .onAppear {
             manager.refreshFiles()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            manager.refreshFiles()
+        }
+    }
+
+    @ViewBuilder
+    private func transcriptionBadge(for url: URL) -> some View {
+        switch manager.transcriber.statuses[url] {
+        case .pending:
+            Image(systemName: "clock")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+        case .running:
+            ProgressView()
+                .controlSize(.small)
+        case .completed:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .font(.caption)
+        case .failed:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .font(.caption)
+        case nil:
+            EmptyView()
+        }
     }
 
     private func formatTime(_ seconds: Int) -> String {
-        let m = seconds / 60
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
         let s = seconds % 60
+        if h > 0 {
+            return String(format: "%d:%02d:%02d", h, m, s)
+        }
         return String(format: "%02d:%02d", m, s)
+    }
+
+    private func transcriptURL(for audioURL: URL) -> URL? {
+        let name = audioURL.deletingPathExtension().lastPathComponent
+        // Strip "-chunkXXX" suffix to get the session name
+        guard let range = name.range(of: #"-chunk\d+$"#, options: .regularExpression) else {
+            return nil
+        }
+        let sessionName = String(name[name.startIndex..<range.lowerBound])
+        return audioURL.deletingLastPathComponent().appendingPathComponent("\(sessionName).txt")
+    }
+
+    private func openInZed(_ url: URL) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        process.arguments = ["zed-preview", url.path]
+        try? process.run()
     }
 
     private func formatFileSize(_ bytes: Int64) -> String {
