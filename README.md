@@ -24,6 +24,16 @@ swift build
 
 Recordings are saved to `./output/`. Double-click to open, right-click for more options.
 
-## Transcription
+## Automatic Transcription
 
-See [TRANSCRIBE.md](TRANSCRIBE.md) for generating transcripts from recordings using WhisperKit.
+During recording, audio is automatically split into chunks at silence boundaries and transcribed in real-time using [WhisperKit](https://github.com/argmaxinc/WhisperKit) (`large-v3-turbo` model). A single `.txt` transcript file is produced per session, with chunks appended in chronological order.
+
+Requires:
+
+```bash
+brew install whisperkit-cli
+```
+
+## Manual Transcription
+
+See [TRANSCRIBE.md](TRANSCRIBE.md) for manually transcribing recordings.

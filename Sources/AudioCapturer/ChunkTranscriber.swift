@@ -14,7 +14,7 @@ final class ChunkTranscriber {
     var statuses: [URL: TranscriptionStatus] = [:]
 
     private let config: TranscriptionConfig
-    private let queue = DispatchQueue(label: "com.audiocapturer.transcription", qos: .utility)
+    private let serialQueue = DispatchQueue(label: "com.audiocapturer.transcription", qos: .utility)
 
     init(config: TranscriptionConfig = TranscriptionConfig()) {
         self.config = config
@@ -24,64 +24,58 @@ final class ChunkTranscriber {
         statuses[audioURL] = .pending
         let config = self.config
 
-        Task { @MainActor in
-            self.statuses[audioURL] = .running
+        // Dispatch to the serial queue so chunks are transcribed in FIFO order.
+        // Each block calls waitUntilExit(), so the next block won't start until
+        // the previous one finishes.
+        serialQueue.async { [weak self] in
+            DispatchQueue.main.async { self?.statuses[audioURL] = .running }
 
-            enum Outcome { case success(URL), failure(String) }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: config.whisperPath)
+            process.arguments = [
+                "transcribe",
+                "--model", config.whisperModel,
+                "--language", config.language,
+                "--audio-path", audioURL.path,
+            ]
 
-            let outcome: Outcome = await withCheckedContinuation { continuation in
-                queue.async {
-                    let process = Process()
-                    process.executableURL = URL(fileURLWithPath: config.whisperPath)
-                    process.arguments = [
-                        "transcribe",
-                        "--model", config.whisperModel,
-                        "--language", config.language,
-                        "--audio-path", audioURL.path,
-                    ]
+            let stdout = Pipe()
+            process.standardOutput = stdout
+            process.standardError = Pipe()
 
-                    let stdout = Pipe()
-                    process.standardOutput = stdout
-                    process.standardError = Pipe()
+            do {
+                try process.run()
+                process.waitUntilExit()
 
-                    do {
-                        try process.run()
-                        process.waitUntilExit()
-
-                        guard process.terminationStatus == 0 else {
-                            continuation.resume(
-                                returning: .failure(
-                                    "whisperkit-cli exited with status \(process.terminationStatus)"
-                                ))
-                            return
-                        }
-
-                        let data = stdout.fileHandleForReading.readDataToEndOfFile()
-
-                        // Append to the shared transcript file with a space separator
-                        if let existingSize = try? FileManager.default.attributesOfItem(atPath: transcriptURL.path)[.size] as? Int,
-                           existingSize > 0 {
-                            let handle = try FileHandle(forWritingTo: transcriptURL)
-                            handle.seekToEndOfFile()
-                            handle.write(Data(" ".utf8))
-                            handle.write(data)
-                            handle.closeFile()
-                        } else {
-                            try data.write(to: transcriptURL)
-                        }
-
-                        continuation.resume(returning: .success(transcriptURL))
-                    } catch {
-                        continuation.resume(returning: .failure(error.localizedDescription))
-                    }
+                guard process.terminationStatus == 0 else {
+                    let msg = "whisperkit-cli exited with status \(process.terminationStatus)"
+                    DispatchQueue.main.async { self?.statuses[audioURL] = .failed(msg) }
+                    return
                 }
-            }
 
-            switch outcome {
-            case .success(let url):
-                self.statuses[audioURL] = .completed(url)
-            case .failure(let message):
-                self.statuses[audioURL] = .failed(message)
+                let rawData = stdout.fileHandleForReading.readDataToEndOfFile()
+                let trimmed = String(data: rawData, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard !trimmed.isEmpty else {
+                    DispatchQueue.main.async { self?.statuses[audioURL] = .completed(transcriptURL) }
+                    return
+                }
+
+                // Append to the shared transcript file
+                if let existingData = try? Data(contentsOf: transcriptURL),
+                   let existing = String(data: existingData, encoding: .utf8),
+                   !existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                {
+                    let cleaned = existing.trimmingCharacters(in: .whitespacesAndNewlines)
+                    try Data("\(cleaned) \(trimmed)\n".utf8).write(to: transcriptURL)
+                } else {
+                    try Data("\(trimmed)\n".utf8).write(to: transcriptURL)
+                }
+
+                DispatchQueue.main.async { self?.statuses[audioURL] = .completed(transcriptURL) }
+            } catch {
+                let msg = error.localizedDescription
+                DispatchQueue.main.async { self?.statuses[audioURL] = .failed(msg) }
             }
         }
     }

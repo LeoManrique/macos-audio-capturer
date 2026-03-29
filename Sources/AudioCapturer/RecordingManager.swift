@@ -14,7 +14,7 @@ struct RecordedFile: Identifiable {
 @MainActor
 final class RecordingManager {
     static let outputDirectory = URL(
-        fileURLWithPath: "/Users/leo/Dev/LeoManrique/Tooling/macos-audio-capturer/output")
+        fileURLWithPath: "./output")
 
     var isRecording = false
     var elapsedSeconds = 0
