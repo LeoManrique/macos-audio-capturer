@@ -1,0 +1,1 @@
+Trim silences from chunks so hallucinations are less frequent
