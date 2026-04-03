@@ -17,8 +17,33 @@ struct ChunkingConfig {
     var pollInterval: TimeInterval = 0.1
 }
 
+enum TranscriptionLanguage: String, CaseIterable {
+    case en, es, fr, de, it, pt, ja, ko, zh, ru, ar, hi, nl, pl, sv, tr
+
+    var displayName: String {
+        switch self {
+        case .en: "English"
+        case .es: "Spanish"
+        case .fr: "French"
+        case .de: "German"
+        case .it: "Italian"
+        case .pt: "Portuguese"
+        case .ja: "Japanese"
+        case .ko: "Korean"
+        case .zh: "Chinese"
+        case .ru: "Russian"
+        case .ar: "Arabic"
+        case .hi: "Hindi"
+        case .nl: "Dutch"
+        case .pl: "Polish"
+        case .sv: "Swedish"
+        case .tr: "Turkish"
+        }
+    }
+}
+
 struct TranscriptionConfig {
     var whisperModel: String = "large-v3_turbo"
-    var language: String = "es"
+    var language: TranscriptionLanguage = .es
     var whisperPath: String = "/opt/homebrew/bin/whisperkit-cli"
 }

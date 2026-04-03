@@ -36,6 +36,7 @@ final class RecordingManager {
     private var currentChunkURL: URL?
     private var currentBundleID = ""
     private var currentFormat: AudioFormat = .m4a
+    private var currentLanguage: TranscriptionLanguage = .es
     private var sessionTimestamp = ""
 
     /// Thread-safe chunk elapsed time, read by the background timer and written by the main-thread timer.
@@ -46,12 +47,13 @@ final class RecordingManager {
     @ObservationIgnored
     private let _shouldRotate = OSAllocatedUnfairLock(initialState: false)
 
-    func start(bundleID: String, format: AudioFormat) {
+    func start(bundleID: String, format: AudioFormat, language: TranscriptionLanguage) {
         guard !isRecording else { return }
 
         errorMessage = nil
         currentBundleID = bundleID
         currentFormat = format
+        currentLanguage = language
 
         do {
             let tap = try ProcessTap(bundleID: bundleID)
@@ -141,7 +143,7 @@ final class RecordingManager {
 
         // Transcribe the final chunk
         if let url = currentChunkURL {
-            transcriber.transcribe(audioURL: url, transcriptURL: transcriptURL())
+            transcriber.transcribe(audioURL: url, transcriptURL: transcriptURL(), language: currentLanguage)
         }
 
         recorder = nil
@@ -204,7 +206,7 @@ final class RecordingManager {
             statusMessage = "Recording... (chunk \(currentChunkIndex))"
 
             if let url = completedURL {
-                transcriber.transcribe(audioURL: url, transcriptURL: transcriptURL())
+                transcriber.transcribe(audioURL: url, transcriptURL: transcriptURL(), language: currentLanguage)
             }
 
             refreshFiles()

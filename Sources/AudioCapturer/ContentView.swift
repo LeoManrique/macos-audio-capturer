@@ -5,6 +5,7 @@ struct ContentView: View {
     @State private var manager = RecordingManager()
     @State private var selectedBundleID: String = ""
     @State private var selectedFormat: AudioFormat = .m4a
+    @State private var selectedLanguage: TranscriptionLanguage = .es
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -39,6 +40,17 @@ struct ContentView: View {
                 .frame(width: 220)
             }
 
+            // Language picker
+            LabeledContent("Language") {
+                Picker("", selection: $selectedLanguage) {
+                    ForEach(TranscriptionLanguage.allCases, id: \.self) { lang in
+                        Text(lang.displayName).tag(lang)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 220)
+            }
+
             Divider()
 
             // Start / Stop button
@@ -55,7 +67,7 @@ struct ContentView: View {
                     .buttonStyle(.borderedProminent)
                 } else {
                     Button {
-                        manager.start(bundleID: selectedBundleID, format: selectedFormat)
+                        manager.start(bundleID: selectedBundleID, format: selectedFormat, language: selectedLanguage)
                     } label: {
                         Label("Start Recording", systemImage: "record.circle")
                             .frame(maxWidth: .infinity)
