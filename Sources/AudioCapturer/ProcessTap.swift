@@ -8,7 +8,7 @@ final class ProcessTap: @unchecked Sendable {
 
     init(bundleID: String) throws {
         let uuid = UUID()
-        let tapDescription = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
+        let tapDescription = CATapDescription(stereoMixdownOfProcesses: [])
         tapDescription.bundleIDs = [bundleID]
         tapDescription.uuid = uuid
         tapDescription.muteBehavior = .unmuted
